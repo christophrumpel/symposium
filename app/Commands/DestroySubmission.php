@@ -22,10 +22,9 @@ class DestroySubmission extends Command
         $conference = Conference::findOrFail($this->conferenceId);
         $revisionIds = Talk::findOrFail($this->talkId)->revisions->pluck('id');
 
-        $talkRevision = $conference->submissions()
+        $conference->submissions()
             ->whereIn('talk_revision_id', $revisionIds)
-            ->firstOrFail();
-
-        $conference->submissions()->detach($talkRevision);
+            ->firstOrFail()
+            ->delete();
     }
 }

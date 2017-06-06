@@ -21,8 +21,9 @@ class CreateSubmission extends Command
         $conference = Conference::findOrFail($this->conferenceId);
         $talk = Talk::findOrFail($this->talkId);
 
-        $conference->submissions()->save($talk->current(), [
-            'status' => 'submitted'
+        return $conference->submissions()->create([
+            'talk_revision_id' => $talk->current()->id,
+            'status' => 'submitted',
         ]);
     }
 }
