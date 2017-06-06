@@ -40,7 +40,7 @@ class Conference extends UuidBase
 
     public function submissions()
     {
-        return $this->belongsToMany(TalkRevision::class, 'submissions')->withTimestamps();
+        return $this->hasMany(Submission::class);
     }
 
 //    public function submitters()

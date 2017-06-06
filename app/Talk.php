@@ -22,11 +22,6 @@ class Talk extends UuidBase
         return $this->belongsTo(User::class, 'author_id');
     }
 
-//    public function submissions()
-//    {
-//        return $this->belongsToMany(Conference::class);
-//    }
-
     public function current()
     {
         return $this->revisions()->orderBy('created_at', 'DESC')->first();
