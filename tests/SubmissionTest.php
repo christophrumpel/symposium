@@ -3,10 +3,17 @@
 use App\Commands\CreateSubmission;
 use App\Commands\DestroySubmission;
 use App\Conference;
+use App\Submission;
 use Laracasts\TestDummy\Factory;
 
 class SubmissionTest extends IntegrationTestCase
 {
+    public function setUp()
+    {
+        parent::setUp();
+        $this->disableExceptionHandling();
+    }
+
     /** @test */
     function submitting_attaches_to_conference()
     {
@@ -18,9 +25,9 @@ class SubmissionTest extends IntegrationTestCase
         $revision = Factory::create('talkRevision');
         $talk->revisions()->save($revision);
 
-        dispatch(new CreateSubmission($conference->id, $talk->id));
+        $submission = dispatch(new CreateSubmission($conference->id, $talk->id));
 
-        $this->assertTrue($conference->submissions->contains($revision));
+        $this->assertTrue($conference->submissions->contains($submission));
     }
 
     /** @test */
@@ -34,11 +41,11 @@ class SubmissionTest extends IntegrationTestCase
         $revision = Factory::create('talkRevision');
         $talk->revisions()->save($revision);
 
-        dispatch(new CreateSubmission($conference->id, $talk->id));
+        $submission = dispatch(new CreateSubmission($conference->id, $talk->id));
 
         dispatch(new DestroySubmission($conference->id, $talk->id));
 
-        $this->assertFalse($conference->submissions->contains($revision));
+        $this->assertFalse($conference->submissions->contains($submission));
     }
 
     /** @test */
@@ -61,15 +68,15 @@ class SubmissionTest extends IntegrationTestCase
         $talk2revision = Factory::create('talkRevision');
         $talk2->revisions()->save($talk2revision);
 
-        dispatch(new CreateSubmission($conference1->id, $talk1->id));
-        dispatch(new CreateSubmission($conference1->id, $talk2->id));
+        $talk_1_submission = dispatch(new CreateSubmission($conference1->id, $talk1->id));
+        $talk_2_submission = dispatch(new CreateSubmission($conference1->id, $talk2->id));
         dispatch(new DestroySubmission($conference1->id, $talk1->id));
-        $this->assertTrue($conference1->submissions->contains($talk2revision));
+        $this->assertTrue($conference1->submissions->contains($talk_2_submission));
 
-        dispatch(new CreateSubmission($conference2->id, $talk2->id));
-        dispatch(new CreateSubmission($conference2->id, $talk1->id));
+        $talk_2_submission = dispatch(new CreateSubmission($conference2->id, $talk2->id));
+        $talk_1_submission = dispatch(new CreateSubmission($conference2->id, $talk1->id));
         dispatch(new DestroySubmission($conference2->id, $talk1->id));
-        $this->assertTrue($conference2->submissions->contains($talk2revision));
+        $this->assertTrue($conference2->submissions->contains($talk_2_submission));
     }
 
     /** @test */
@@ -89,10 +96,9 @@ class SubmissionTest extends IntegrationTestCase
         $revision = Factory::create('talkRevision');
         $talk->revisions()->save($revision);
 
-        dispatch(new CreateSubmission($conference->id, $talk->id));
-        $conference->load('submissions');
+        $submissions = dispatch(new CreateSubmission($conference->id, $talk->id));
 
-        $this->assertTrue($conference->submissions->contains($revision));
+        $this->assertTrue($conference->submissions->contains($submissions));
     }
 
     /** @test */
@@ -115,17 +121,16 @@ class SubmissionTest extends IntegrationTestCase
         ]);
         $talk->revisions()->save($revision);
 
-        dispatch(new CreateSubmission($conference->id, $talk->id));
+        $submission = dispatch(new CreateSubmission($conference->id, $talk->id));
 
         $revision2 = Factory::create('talkRevision');
         $talk->revisions()->save($revision2);
 
-        $this->assertTrue($conference->submissions->contains($revision));
+        $this->assertTrue($conference->submissions->contains($submission));
 
-        dispatch(new DestroySubmission($conference->id, $talk->id));
-        $conference->load('submissions'); // reload
+        $submission = dispatch(new DestroySubmission($conference->id, $talk->id));
 
-        $this->assertFalse($conference->submissions->contains($revision));
+        $this->assertFalse($conference->submissions->contains($submission));
     }
 
     /** @test */
@@ -164,12 +169,14 @@ class SubmissionTest extends IntegrationTestCase
             'talkId' => $talk->id,
         ]);
 
-        $this->assertTrue($conference->submissions->contains($revision));
+        $this->assertTrue($conference->submissions->contains(Submission::first()));
     }
 
     /** @test */
     function user_cannot_submit_other_users_talk()
     {
+        $this->enableExceptionHandling();
+
         $user = Factory::create('user');
         $this->be($user);
         $otherUser = Factory::create('user', [
@@ -188,7 +195,86 @@ class SubmissionTest extends IntegrationTestCase
             'talkId' => $talk->id,
         ]);
 
+        $this->assertResponseStatus(404);
         $this->assertEquals(0, $conference->submissions->count());
         $this->assertFalse($conference->submissions->contains($revision));
+    }
+
+    /**
+     * @test
+     */
+    function user_can_retrieve_their_submissions_of_a_particular_talk()
+    {
+        $user = Factory::create('user');
+        $this->be($user);
+
+        $conference = Factory::create('conference');
+
+        $talk_1 = Factory::create('talk', ['author_id' => $user->id]);
+        $revision_1 = Factory::create('talkRevision');
+        $talk_1->revisions()->save($revision_1);
+
+        $talk_2 = Factory::create('talk', ['author_id' => $user->id]);
+        $revision_2 = Factory::create('talkRevision');
+        $talk_2->revisions()->save($revision_2);
+
+        dispatch(new CreateSubmission($conference->id, $talk_1->id));
+        dispatch(new CreateSubmission($conference->id, $talk_2->id));
+
+        $submissions = $revision_1->submissions()->get();
+
+        $this->assertCount(1, $submissions);
+        $this->assertEquals($conference->id, $submissions[0]->conference_id);
+        $this->assertEquals($revision_1->id, $submissions[0]->talk_revision_id);
+    }
+
+    /**
+     * @test
+     */
+    function user_can_retrieve_all_submissions_to_a_conference()
+    {
+        $user = Factory::create('user');
+        $this->be($user);
+
+        $conference = Factory::create('conference');
+
+        $talk_1 = Factory::create('talk', ['author_id' => $user->id]);
+        $revision_1 = Factory::create('talkRevision');
+        $talk_1->revisions()->save($revision_1);
+
+        $talk_2 = Factory::create('talk', ['author_id' => $user->id]);
+        $revision_2 = Factory::create('talkRevision');
+        $talk_2->revisions()->save($revision_2);
+
+        $submission_1 = dispatch(new CreateSubmission($conference->id, $talk_1->id));
+        $submission_2 = dispatch(new CreateSubmission($conference->id, $talk_2->id));
+
+        $submissions_to_conference = $conference->submissions()->get();
+
+        $this->assertCount(2, $submissions_to_conference);
+        $this->assertEquals($revision_1->id, $submissions_to_conference[0]->talk_revision_id);
+        $this->assertEquals($revision_2->id, $submissions_to_conference[1]->talk_revision_id);
+    }
+
+    /**
+     * @test
+     * @group foo
+     */
+    function user_can_mark_a_submission_as_accepted_via_http()
+    {
+        $user = Factory::create('user');
+        $this->be($user);
+
+        $conference = Factory::create('conference');
+
+        $talk = Factory::create('talk', ['author_id' => $user->id]);
+        $revision = Factory::create('talkRevision');
+        $talk->revisions()->save($revision);
+
+        dispatch(new CreateSubmission($conference->id, $talk->id));
+
+        // make get request using id of submission that we want to mark as accepted
+
+        // assert that the submission has been updated with `accepted` set to `true`
     }
 }
